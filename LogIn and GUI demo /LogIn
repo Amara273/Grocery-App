@@ -1,0 +1,257 @@
+import smtplib
+import csv
+import os
+import random
+import string
+import pandas as pd
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from pathlib import Path
+from tkinter import Tk, Canvas, Entry, Button, PhotoImage, messagebox, Label
+
+OUTPUT_PATH = Path(__file__).parent
+ASSETS_PATH = OUTPUT_PATH / Path("C:/Users/U-ser/Downloads/Compressed/CSB_Project-main_2/CSB_Project-main/build/assets/frame1")
+
+def relative_to_assets(path: str) -> Path:
+    return ASSETS_PATH / Path(path)
+
+class UserAuth:
+    FILE_NAME = "users.csv"
+    SENDER_EMAIL = "2024054thorng@aupp.edu.kh"
+    SENDER_PASSWORD = "IT$$Wr&27"  # Replace with App Password
+    SMTP_SERVER = "smtp.office365.com"
+    SMTP_PORT = 587
+
+    @staticmethod
+    def send_email(receiver_email, subject, body):
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = UserAuth.SENDER_EMAIL
+            msg["To"] = receiver_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain"))
+
+            server = smtplib.SMTP(UserAuth.SMTP_SERVER, UserAuth.SMTP_PORT)
+            server.starttls()
+            server.login(UserAuth.SENDER_EMAIL, UserAuth.SENDER_PASSWORD)
+            server.sendmail(UserAuth.SENDER_EMAIL, receiver_email, msg.as_string())
+            server.quit()
+            messagebox.showinfo("Success", "An email has been sent to reset your password.")
+        except smtplib.SMTPAuthenticationError:
+            messagebox.showerror("Error", "Authentication failed. Check your email credentials.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error: {e}")
+
+    @staticmethod
+    def generate_temp_password():
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+
+    @staticmethod
+    def signup(email, username, password, password2):
+        if not os.path.exists(UserAuth.FILE_NAME):
+            with open(UserAuth.FILE_NAME, mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["email", "username", "password"])
+
+        with open(UserAuth.FILE_NAME, mode="r", newline="") as file:
+            reader = csv.reader(file)
+            next(reader, None)
+            for row in reader:
+                if row[0] == email:
+                    messagebox.showerror("Error", "You already have an account. Please log in!")
+                    return
+        
+        if password == password2:
+            with open(UserAuth.FILE_NAME, mode="a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([email, username, password])
+                messagebox.showinfo("Success", "Registration successful!")
+        else:
+            messagebox.showerror("Error", "Passwords do not match!")
+
+    @staticmethod
+    def login(email, password):
+        if not os.path.exists(UserAuth.FILE_NAME):
+            messagebox.showerror("Error", "No users registered yet. Please sign up first.")
+            return False
+
+        with open(UserAuth.FILE_NAME, mode="r", newline="") as file:
+            reader = csv.reader(file)
+            next(reader, None)
+            for row in reader:
+                if row[0] == email and row[2] == password:
+                    messagebox.showinfo("Success", f"Welcome back, {row[1]}!")
+                    return True
+            
+        messagebox.showerror("Error", "Invalid email or password.")
+        return False
+
+    @staticmethod
+    def forgot_password(email):
+        if not os.path.exists(UserAuth.FILE_NAME):
+            messagebox.showerror("Error", "No users registered yet. Please sign up first.")
+            return
+
+        users = []
+        found = False
+
+        with open(UserAuth.FILE_NAME, mode="r", newline="") as file:
+            reader = csv.reader(file)
+            next(reader, None)
+            for row in reader:
+                if row[0] == email:
+                    temp_password = UserAuth.generate_temp_password()
+                    row[2] = temp_password
+                    found = True
+                    UserAuth.send_email(email, "Password Reset", f"Your new temporary password is: {temp_password}")
+                users.append(row)
+
+        if found:
+            with open(UserAuth.FILE_NAME, mode="w", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow(["email", "username", "password"])
+                writer.writerows(users)
+        else:
+            messagebox.showerror("Error", "Email not found.")
+class SmartGroceryTracker:
+    def __init__(self, filename='grocery_data.csv'):
+        self.filename = filename
+        self.load_data()
+        
+    def load_data(self):
+        if os.path.exists(self.filename):
+            self.df = pd.read_csv(self.filename)
+        else:
+            self.df = pd.DataFrame(columns=['Name', 'Quantity', 'Category', 'Compartment', 'Expiry_Date'])
+            self.df.to_csv(self.filename, index=False)
+            
+    def save_data(self):
+        self.df.to_csv(self.filename, index=False)
+        
+    def add_item(self, name, quantity, category, compartment, expiry_date):
+        errors = []
+
+        if not name:
+            errors.append("Name cannot be empty.")
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                errors.append("Quantity must be a positive integer.")
+        except ValueError:
+            errors.append("Quantity must be a valid integer.")
+        if not category:
+            errors.append("Category cannot be empty.")
+        if compartment.lower() not in ["freezer", "refrigerator", "outside"]:
+            errors.append("Compartment must be 'Freezer', 'Refrigerator', or 'Outside'.")
+        try:
+            expiry_date = pd.to_datetime(expiry_date, format="%Y/%m/%d").date()
+        except ValueError:
+            errors.append("Expiry date must be in YYYY/MM/DD format.")
+
+        if errors:
+            return "\n".join(errors)
+
+        new_item = pd.DataFrame([{ "Name": name, "Quantity": quantity, "Category": category, "Compartment": compartment, "Expiry_Date": expiry_date }])
+        self.df = pd.concat([self.df, new_item], ignore_index=True)
+        self.save_data()
+        return "Item added successfully!"
+
+# GUI Implementation
+# GUI Setup
+window = Tk()
+window.geometry("600x400")
+window.configure(bg="#DEC9F8")
+window.title("Smart Grocery Tracker")
+
+canvas = Canvas(
+    window,
+    bg="#DEC9F8",
+    height=400,
+    width=600,
+    bd=0,
+    highlightthickness=0,
+    relief="ridge"
+)
+canvas.place(x=0, y=0)
+
+image_path = relative_to_assets("image_1.png") 
+image = PhotoImage(file=image_path)
+canvas.create_image(300, 50, image=image)  
+
+canvas.create_text(250, 50, text="Sign Up / Login", font=("Arial", 24, "bold"), fill="#000000")
+
+# Entry Fields
+email_entry = Entry(window, width=40)
+email_entry.place(x=200, y=100)
+email_entry.insert(0, "Email")
+
+username_entry = Entry(window, width=40)
+username_entry.place(x=200, y=140)
+username_entry.insert(0, "Username")
+
+password_entry = Entry(window, width=40, show="*")
+password_entry.place(x=200, y=180)
+password_entry.insert(0, "Password")
+
+password2_entry = Entry(window, width=40, show="*")
+password2_entry.place(x=200, y=220)
+password2_entry.insert(0, "Confirm Password")
+
+# Buttons
+def handle_signup():
+    UserAuth.signup(email_entry.get(), username_entry.get(), password_entry.get(), password2_entry.get())
+
+def handle_login():
+    UserAuth.login(email_entry.get(), password_entry.get())
+
+def handle_forgot_password():
+    UserAuth.forgot_password(email_entry.get())
+
+signup_button = Button(window, text="Sign Up", command=handle_signup, width=15, height=2, bg="#000000", fg="white")
+signup_button.place(x=200, y=270)
+
+login_button = Button(window, text="Login", command=handle_login, width=15, height=2, bg="#000000", fg="white")
+login_button.place(x=350, y=270)
+
+forgot_password_button = Button(window, text="Forgot Password?", command=handle_forgot_password, width=20, height=2, bg="#555555", fg="white")
+forgot_password_button.place(x=270, y=320)
+
+window.resizable(False, False)
+window.mainloop()
+
+
+tracker = SmartGroceryTracker()
+
+window = Tk()
+window.geometry("800x600")
+window.title("Grocery Expiry Tracker")
+window.configure(bg="#DEC9F8")
+
+Label(window, text="Grocery Expiry Tracker", font=("Arial", 24), bg="#DEC9F8").pack(pady=10)
+Label(window, text="Item Name:", bg="#DEC9F8").pack()
+entry_name = Entry(window)
+entry_name.pack()
+
+Label(window, text="Quantity:", bg="#DEC9F8").pack()
+entry_quantity = Entry(window)
+entry_quantity.pack()
+
+Label(window, text="Category:", bg="#DEC9F8").pack()
+entry_category = Entry(window)
+entry_category.pack()
+
+Label(window, text="Compartment (Freezer/Refrigerator/Outside):", bg="#DEC9F8").pack()
+entry_compartment = Entry(window)
+entry_compartment.pack()
+
+Label(window, text="Expiry Date (YYYY/MM/DD):", bg="#DEC9F8").pack()
+entry_expiry = Entry(window)
+entry_expiry.pack()
+
+def add_item_gui():
+    result = tracker.add_item(entry_name.get(), entry_quantity.get(), entry_category.get(), entry_compartment.get(), entry_expiry.get())
+    messagebox.showinfo("Result", result)
+
+Button(window, text="Add Item", command=add_item_gui).pack(pady=10)
+
+window.mainloop()
